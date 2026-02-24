@@ -10,8 +10,9 @@ QUANTUMM is a security-oriented application designed to demonstrate authenticati
 - Beginner-friendly implementation
 
 ## Technologies Used
-- Language: (update this)
+- Language: Shell,typescript
 - Tools: Git, GitHub
+- Machine Learning Algorithms
 
 ## How to Run
 1. Clone the repository  
