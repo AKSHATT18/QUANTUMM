@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: quantumshield-db
+    environment:
+      POSTGRES_DB: quantumshield
+      POSTGRES_USER: quantumshield
+      POSTGRES_PASSWORD: quantumshield123
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantumshield -d quantumshield"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quantumshield-network
+
+  # Redis for session storage (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: quantumshield-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quantumshield-network
+
+  # QuantumShield Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: quantumshield-app
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://quantumshield:quantumshield123@postgres:5432/quantumshield
+      REDIS_URL: redis://redis:6379
+      # Quantum model configuration
+      QUANTUM_MODEL_QUBITS: 8
+      ENCODED_QUBITS: 4
+      PRIVACY_BUDGET: 0.1
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - quantumshield-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Development version (optional)
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: client-builder
+    container_name: quantumshield-app-dev
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DATABASE_URL: postgresql://quantumshield:quantumshield123@postgres:5432/quantumshield
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "5001:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./client:/app/client
+      - ./server:/app/server
+      - ./shared:/app/shared
+      - ./logs:/app/logs
+    networks:
+      - quantumshield-network
+    restart: unless-stopped
+    command: npm run dev
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  quantumshield-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
